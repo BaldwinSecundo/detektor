@@ -1,6 +1,6 @@
 // Offline cache for the app shell: after the first visit the app opens in the
 // field without internet. Bump VERSION when files change.
-const VERSION = "det-0.3.0";
+const VERSION = "det-0.3.1";
 const FILES = ["./", "index.html", "css/app.css", "js/app.js", "js/link.js", "js/proto.js", "js/waterfall.js",
   "js/detect.js", "js/video.js", "js/hunt.js", "js/demo.js", "vendor/web-serial-polyfill.js",
   "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png"];

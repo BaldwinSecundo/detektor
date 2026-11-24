@@ -20,8 +20,8 @@ const store = {
 const cfg = {
   range: store.get("range", "fpv"),
   gain: store.get("gain", 40),          // sweep and track
-  vidPx: store.get("vidPx2", 112),
-  vidGate: store.get("vidGate", true),
+  vidPx: store.get("vidPx3", 128),
+  vidFields: store.get("vidFields", 2),   // 2 even lines of field 1, 1 all of field 1, 0 both fields
   vidColor: store.get("vidColor", false),
   vidAutoGain: store.get("vidAutoGain", true),
   vidGains: store.get("vidGains", {}),  // last good video gain per 5 MHz
@@ -36,7 +36,7 @@ const wf = new Waterfall($("spec"), $("wf"));
 const det = new Detector();
 const video = new Video($("vid"));
 const hunt = new Hunt($("huntPlot"));
-video.gate = cfg.vidGate;
+video.gate = cfg.vidFields > 0;
 video.color = cfg.vidColor;
 
 let view = "wf";
@@ -216,8 +216,11 @@ $("btnHuntVideo").onclick = () => goVideo(huntMhz);
 
 // ---- video -----------------------------------------------------------------------------------------
 let autoRun = 0, waiter = null;
+let vprof = "", vprofAt = 0;
 function onText(t) {
   log(t);
+  const vp = /^vprof (.*)$/m.exec(t);
+  if (vp) { vprof = vp[1]; vprofAt = performance.now(); }
   const on = /^video on .*gain (\d+),.*\(peak (\d+)\)/m.exec(t);
   if (on && waiter) { const w = waiter; waiter = null; w({ gain: +on[1], peak: +on[2] }); }
   if (waiter && /^video (<|: )/m.test(t)) { const w = waiter; waiter = null; w(null); }
@@ -225,7 +228,7 @@ function onText(t) {
 }
 function overlay(t) { $("vidOverlay").textContent = t; $("vidOverlay").hidden = !t; }
 function videoCmd(mhz, gain) {
-  return `video ${mhz} ${gain} ${cfg.vidPx} 900 auto ${cfg.vidGate ? 1 : 0} ${cfg.vidColor ? 1 : 0}`;
+  return `video ${mhz} ${gain} ${cfg.vidPx} 900 auto ${cfg.vidFields} ${cfg.vidColor ? 1 : 0}`;
 }
 function waitVideoOn(ms) {
   return new Promise(res => {
@@ -322,9 +325,9 @@ for (const b of document.querySelectorAll("[data-vg]")) b.onclick = () => {
 $("vidAutoGain").checked = cfg.vidAutoGain;
 $("vidAutoGain").onchange = () => { cfg.vidAutoGain = $("vidAutoGain").checked; store.set("vidAutoGain", cfg.vidAutoGain); };
 $("vidPx").value = String(cfg.vidPx);
-$("vidPx").onchange = () => { cfg.vidPx = +$("vidPx").value; store.set("vidPx2", cfg.vidPx); if (vidMhz && view === "video") startVideo(vidMhz); };
-$("vidGate").checked = cfg.vidGate;
-$("vidGate").onchange = () => { cfg.vidGate = video.gate = $("vidGate").checked; store.set("vidGate", cfg.vidGate); if (vidMhz && view === "video") startVideo(vidMhz); };
+$("vidPx").onchange = () => { cfg.vidPx = +$("vidPx").value; store.set("vidPx3", cfg.vidPx); if (vidMhz && view === "video") startVideo(vidMhz); };
+$("vidFields").value = String(cfg.vidFields);
+$("vidFields").onchange = () => { cfg.vidFields = +$("vidFields").value; video.gate = cfg.vidFields > 0; store.set("vidFields", cfg.vidFields); if (vidMhz && view === "video") startVideo(vidMhz); };
 $("vidColor").checked = cfg.vidColor;
 $("vidColor").onchange = () => { cfg.vidColor = video.color = $("vidColor").checked; store.set("vidColor", cfg.vidColor); if (vidMhz && view === "video") startVideo(vidMhz); };
 $("vidSat").value = String(store.get("vidSat", 1));
@@ -420,6 +423,7 @@ setInterval(() => {
     $("vidHud").textContent = vidMhz ? `${vidMhz} MHz ${channelName(vidMhz)}  gain ${vidGain}  ${video.ntsc ? "NTSC" : "PAL"}\n${lock}\n` +
       `${(s.lines / dt).toFixed(0)} linii/s  ${(s.bytes / 1024 / dt).toFixed(0)} kB/s  zgubione ${s.lost}  pominięte ${Math.round(s.gap / 40e6 / dt * 100)}%` +
       (video.color ? `\nkolor ${(s.clines / dt).toFixed(0)} linii/s  balans U ${video.meanU.toFixed(1)} V ${video.meanV.toFixed(1)}` : "") +
+      (performance.now() - vprofAt < 3000 ? "\n" + vprof.replace(" | ", "\n") : "") +
       (raw ? "\nZAPIS SUROWYCH DANYCH…" : "") : "";
     s.lines = 0; s.bytes = 0; s.gap = 0; s.clines = 0;
   }

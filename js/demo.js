@@ -58,7 +58,7 @@ export class DemoLink extends EventTarget {
       const m = /^([RABEFL])([1-8])$/i.exec(a[0]);
       if (m) mhz = BANDS[m[1].toUpperCase()][+m[2] - 1];
       const gain = +(a[1] ?? 30), px = +(a[2] ?? 128);
-      this.vid = { mhz, gain, px, gate: a[5] !== "0", color: a[6] === "1", t0: performance.now(), seq: 0 };
+      this.vid = { mhz, gain, px, gate: a[5] !== "0", half: a[5] === "2", color: a[6] === "1", t0: performance.now(), seq: 0 };
       const peak = Math.round(Math.min(514, 38 * Math.pow(10, (gain - 30) * 0.8 / 20)));
       this.mode = "video";
       this.say(`video on ${mhz} MHz (LO ${mhz - 2}), gain ${gain}, px ${px}, 900 kB/s, window lsb 3 (peak ${peak}), DC 0/0 -> 0/0 in 0 steps\n`);
@@ -121,6 +121,7 @@ export class DemoLink extends EventTarget {
       this.pattern = frame;
       if (f1 || !v.gate) {
         for (let ln = 23; ln <= 310; ln++) {
+          if (v.half && (ln & 1)) continue;
           const l = f1 ? ln : ln + 313;
           lines.push([l, 8 | (f1 ? 0 : 2), v.field & 255]);
         }

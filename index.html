@@ -96,8 +96,12 @@
     <details class="more">
       <summary>Ustawienia obrazu</summary>
       <div class="tools">
-        <label>Piksele w linii <select id="vidPx"><option>96</option><option selected>112</option><option>128</option><option>160</option><option>192</option></select></label>
-        <label class="chk"><input type="checkbox" id="vidGate" checked>tylko 1. półobraz (płynniej, stabilniej)</label>
+        <label>Piksele w linii <select id="vidPx"><option>96</option><option>112</option><option selected>128</option><option>160</option><option>192</option></select></label>
+        <label>Linie <select id="vidFields">
+          <option value="2" selected>co druga z 1. półobrazu (najstabilniej)</option>
+          <option value="1">wszystkie z 1. półobrazu (ostrzej)</option>
+          <option value="0">oba półobrazy (jak AWL)</option>
+        </select></label>
         <label class="chk"><input type="checkbox" id="vidColor">kolor (próbnie)</label>
         <label>Nasycenie <input type="range" id="vidSat" min="0" max="2" step="0.1" value="1"></label>
         <label>Odcień <input type="range" id="vidHue" min="-180" max="180" step="5" value="0"><output id="vidHueOut">0°</output></label>
