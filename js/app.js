@@ -3,10 +3,10 @@
 // screen puts it in its own mode (sweep / track / video).
 import { Link, linkSupport } from "./link.js";
 import { DemoLink } from "./demo.js";
-import { parseW, parseR, channelName } from "./proto.js";
+import { parseW, parseR, channelName, encodeFrame } from "./proto.js";
 import { Waterfall } from "./waterfall.js";
 import { Detector } from "./detect.js";
-import { Video } from "./video.js";
+import { Video, download } from "./video.js";
 import { Hunt } from "./hunt.js";
 
 const $ = id => document.getElementById(id);
@@ -73,8 +73,13 @@ link.addEventListener("state", e => {
     notice("Połączenie z płytką przerwane. Podłącz ją ponownie i naciśnij „Połącz”.");
   }
 });
+let raw = null;   // {parts, bytes, until}: frames written out as they came, for offline analysis
 link.addEventListener("frame", e => {
   const { type, payload } = e.detail;
+  if (raw) {
+    if (performance.now() < raw.until && raw.bytes < 40e6) { const f = encodeFrame(type, payload); raw.parts.push(f); raw.bytes += f.length; }
+    else { download(new Blob(raw.parts), `surowe-${vidMhz ?? cursor ?? "x"}MHz-${stamp()}.bin`); log(`[raw] zapisano ${(raw.bytes / 1e6).toFixed(1)} MB`); raw = null; }
+  }
   if (type === "W") onWaterfall(payload);
   else if (type === "V") video.onFrame(payload);
   else if (type === "U") video.onColor(payload);
@@ -325,6 +330,12 @@ $("vidColor").onchange = () => { cfg.vidColor = video.color = $("vidColor").chec
 $("vidSat").value = String(store.get("vidSat", 1));
 video.saturation = +$("vidSat").value;
 $("vidSat").oninput = () => { video.saturation = +$("vidSat").value; store.set("vidSat", video.saturation); video.dirty = true; };
+$("vidHue").value = String(store.get("vidHue", 0));
+video.hue = +$("vidHue").value; $("vidHueOut").textContent = video.hue + "°";
+$("vidHue").oninput = () => { video.hue = +$("vidHue").value; $("vidHueOut").textContent = video.hue + "°"; store.set("vidHue", video.hue); video.dirty = true; };
+$("vidBal").checked = store.get("vidBal", true);
+video.autoBalance = $("vidBal").checked;
+$("vidBal").onchange = () => { video.autoBalance = $("vidBal").checked; store.set("vidBal", video.autoBalance); video.dirty = true; };
 $("btnBack").onclick = () => { setAuto(false); autoRun++; showView("wf"); };
 $("btnSnap").onclick = () => video.snapshot(`fpv-${vidMhz}MHz-${stamp()}`);
 let stopRec = null;
@@ -408,7 +419,8 @@ setInterval(() => {
     const lock = !live ? "brak danych" : video.frameLocked() ? "obraz zsynchronizowany" : video.locked() ? "linie, szukam ramki" : "brak synchronizacji";
     $("vidHud").textContent = vidMhz ? `${vidMhz} MHz ${channelName(vidMhz)}  gain ${vidGain}  ${video.ntsc ? "NTSC" : "PAL"}\n${lock}\n` +
       `${(s.lines / dt).toFixed(0)} linii/s  ${(s.bytes / 1024 / dt).toFixed(0)} kB/s  zgubione ${s.lost}  pominięte ${Math.round(s.gap / 40e6 / dt * 100)}%` +
-      (video.color ? `\nkolor ${(s.clines / dt).toFixed(0)} linii/s` : "") : "";
+      (video.color ? `\nkolor ${(s.clines / dt).toFixed(0)} linii/s  balans U ${video.meanU.toFixed(1)} V ${video.meanV.toFixed(1)}` : "") +
+      (raw ? "\nZAPIS SUROWYCH DANYCH…" : "") : "";
     s.lines = 0; s.bytes = 0; s.gap = 0; s.clines = 0;
   }
 }, 500);
@@ -420,6 +432,11 @@ $("btnMenu").onclick = () => {
   $("log").textContent = logLines.join("\n");
   $("menu").showModal();
   $("log").scrollTop = 1e9;
+};
+$("btnRaw").onclick = () => {
+  raw = { parts: [], bytes: 0, until: performance.now() + 10000 };
+  log("[raw] zapis 10 s…");
+  $("menu").close();
 };
 for (const b of document.querySelectorAll("[data-cmd]")) b.onclick = () => link.send(b.dataset.cmd);
 $("cmdForm").onsubmit = e => { e.preventDefault(); const v = $("cmdIn").value.trim(); if (v) { log("> " + v); link.send(v); $("cmdIn").value = ""; } };

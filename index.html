@@ -100,6 +100,8 @@
         <label class="chk"><input type="checkbox" id="vidGate" checked>półobrazy na zmianę (płynniej)</label>
         <label class="chk"><input type="checkbox" id="vidColor">kolor (próbnie)</label>
         <label>Nasycenie <input type="range" id="vidSat" min="0" max="2" step="0.1" value="1"></label>
+        <label>Odcień <input type="range" id="vidHue" min="-180" max="180" step="5" value="0"><output id="vidHueOut">0°</output></label>
+        <label class="chk"><input type="checkbox" id="vidBal" checked>auto balans</label>
       </div>
       <p class="sub">Na czas wideo waterfall stoi: płytka ma jedno radio. Każda inna komenda zatrzymuje obraz.</p>
     </details>
@@ -114,6 +116,7 @@
     <button data-cmd="sweep status">sweep status</button>
     <button data-cmd="help">help</button>
     <button data-cmd="restart">restart płytki</button>
+    <button id="btnRaw">Zapisz surowe dane (10 s)</button>
     <a class="btn" href="?demo">Tryb demo</a>
   </div>
   <form id="cmdForm" class="cmd"><input id="cmdIn" placeholder="komenda, np. gain 50" autocomplete="off"><button>Wyślij</button></form>

@@ -11,7 +11,7 @@
 // resolution than brightness.
 import { parseVHeader, VF, VSTATE } from "./proto.js";
 
-const FRESH_FIELDS = 6;     // a line older than this many fields is stale
+const FRESH_FIELDS = 4;     // a line older than this many fields is stale (2 frames: less combing on motion)
 const MAX_GAP = 10;         // interpolate across at most this many rows
 const CHROMA_FRESH = 12, CHROMA_GAP = 48;
 const VC_WEAK = 4, VC_VLOCK = 8, VC_FIELD2 = 16, VC_NTSC = 32;
@@ -35,6 +35,9 @@ export class Video {
     this.gate = true;
     this.color = false;
     this.saturation = 1;
+    this.hue = 0;            // degrees, rotates U/V
+    this.autoBalance = true; // subtract the long-term mean U/V (removes a constant colour cast)
+    this.meanU = 0; this.meanV = 0;
     this.dirty = false;
     this.fc = 0;            // field counter, unwrapped from the records' 8-bit count
     this.lastFc8 = -1;
@@ -121,6 +124,12 @@ export class Video {
       const r = rowOf(line, (fl & VC_NTSC) !== 0);
       if (r < 0 || r >= this.H) continue;
       const weak = (fl & VC_WEAK) !== 0;
+      if (!weak) {   // running mean of the whole picture's colour (~2 s): a scene averages to about grey
+        let su = 0, sv = 0;
+        for (let j = 0; j < nseg; j++) { su += sp[o + 10 + 2 * j]; sv += sp[o + 11 + 2 * j]; }
+        this.meanU += 0.002 * (su / nseg - this.meanU);
+        this.meanV += 0.002 * (sv / nseg - this.meanV);
+      }
       for (let j = 0; j < nseg; j++) {
         this.cu[r * nseg + j] = weak ? 0 : sp[o + 10 + 2 * j];
         this.cv2[r * nseg + j] = weak ? 0 : sp[o + 11 + 2 * j];
@@ -154,6 +163,8 @@ export class Video {
     let cprev, cnext;
     if (useColor) [cprev, cnext] = Video.neighbours(this.cstamp, H, now, CHROMA_FRESH, CHROMA_GAP);
     const nseg = this.nseg, sat = this.saturation / 149;
+    const bu = this.autoBalance ? this.meanU : 0, bv = this.autoBalance ? this.meanV : 0;
+    const hc = Math.cos(this.hue * Math.PI / 180), hs = Math.sin(this.hue * Math.PI / 180);
     const yRow = new Float32Array(px), uRow = new Float32Array(px), vRow = new Float32Array(px);
     for (let r = 0; r < H; r++) {
       // brightness: this row, or the blend of the nearest fresh rows, or (nothing near) whatever it last had
@@ -177,8 +188,9 @@ export class Video {
             const f = Math.max(0, Math.min(nseg - 1, (x + 0.5) / px * nseg - 0.5)), j = Math.floor(f), w = f - j, j1 = Math.min(nseg - 1, j + 1);
             const u0 = this.cu[r0 * nseg + j] * (1 - w) + this.cu[r0 * nseg + j1] * w, u1 = this.cu[r1 * nseg + j] * (1 - w) + this.cu[r1 * nseg + j1] * w;
             const v0 = this.cv2[r0 * nseg + j] * (1 - w) + this.cv2[r0 * nseg + j1] * w, v1 = this.cv2[r1 * nseg + j] * (1 - w) + this.cv2[r1 * nseg + j1] * w;
-            uRow[x] = (u0 * (1 - t) + u1 * t) * sat;
-            vRow[x] = (v0 * (1 - t) + v1 * t) * sat;
+            const uu = u0 * (1 - t) + u1 * t - bu, vv = v0 * (1 - t) + v1 * t - bv;
+            uRow[x] = (uu * hc - vv * hs) * sat;
+            vRow[x] = (uu * hs + vv * hc) * sat;
           }
         }
       }
@@ -186,7 +198,9 @@ export class Video {
       for (let x = 0; x < px; x++, o += 4) {
         const y = (yRow[x] - 64) / 149;
         if (haveC) {
-          const u = uRow[x], v = vRow[x];
+          // no colour in near-black and near-white: there the chroma is mostly noise and cross-colour
+          const k = Math.max(0, Math.min(1, Math.min(y * 5, (1.05 - y) * 5)));
+          const u = uRow[x] * k, v = vRow[x] * k;
           d[o] = (y + 1.13983 * v) * 255;
           d[o + 1] = (y - 0.39465 * u - 0.5806 * v) * 255;
           d[o + 2] = (y + 2.03211 * u) * 255;
