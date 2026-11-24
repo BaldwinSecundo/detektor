@@ -1,19 +1,18 @@
 // Analog FPV picture from the C5's 'V' (luma) and 'U' (colour) frames.
 //
 // Lines arrive with their ITU line number once the demodulator has vertical
-// lock. With "fields" on, the C5 sends only field 1: even lines in one frame,
-// odd lines in the next. Every received line is kept with the field it came
-// in; the picture is composed from the lines that are fresh (last few fields),
-// and the rows in between are interpolated from the nearest fresh rows above
-// and below. That removes the staircase of repeated lines and patches lines
-// the C5 dropped. Colour (optional) comes as 32 U/V pairs on every 8th line and
+// lock. With "fields" on, the C5 sends every line of field 1 and does not
+// demodulate field 2 at all. Every received line is kept with its arrival
+// time; the picture is composed from the fresh lines (last ~2 frames) and the
+// rows in between (field 2's rows, lines the C5 dropped) are interpolated from
+// the nearest fresh rows above and below. Colour (optional) comes as 32 U/V pairs on every 8th line and
 // is interpolated in both directions; the eye sees colour at much lower
 // resolution than brightness.
 import { parseVHeader, VF, VSTATE } from "./proto.js";
 
-const FRESH_FIELDS = 4;     // a line older than this many fields is stale (2 frames: less combing on motion)
+const FRESH_MS = 75;        // a line older than this (ms, ~2 frames) is stale
 const MAX_GAP = 10;         // interpolate across at most this many rows
-const CHROMA_FRESH = 12, CHROMA_GAP = 48;
+const CHROMA_FRESH_MS = 150, CHROMA_GAP = 48;
 const VC_WEAK = 4, VC_VLOCK = 8, VC_FIELD2 = 16, VC_NTSC = 32;
 
 function rowOf(line, ntsc) {
@@ -96,13 +95,13 @@ export class Video {
         const r = rowOf(line, this.ntsc);
         if (r < 0) continue;
         this.luma.set(p.subarray(o + 8, o + 8 + px), r * px);
-        this.stamp[r] = this.fc;
+        this.stamp[r] = this.last;
       } else {
         // line lock only: stack the lines so something shows while it locks
         const r = this.freeRow;
         this.freeRow = (this.freeRow + 1) % H;
         this.luma.set(p.subarray(o + 8, o + 8 + px), r * px);
-        this.stamp[r] = this.fc;
+        this.stamp[r] = this.last;
       }
       this.dirty = true;
     }
@@ -134,7 +133,7 @@ export class Video {
         this.cu[r * nseg + j] = weak ? 0 : sp[o + 10 + 2 * j];
         this.cv2[r * nseg + j] = weak ? 0 : sp[o + 11 + 2 * j];
       }
-      this.cstamp[r] = this.fc;
+      this.cstamp[r] = performance.now();
       this.stats.clines++;
     }
     this.dirty = true;
@@ -157,11 +156,11 @@ export class Video {
   }
 
   compose() {
-    const H = this.H, px = this.px, L = this.luma, d = this.img.data, now = this.fc;
-    const [prev, next] = Video.neighbours(this.stamp, H, now, FRESH_FIELDS, MAX_GAP);
+    const H = this.H, px = this.px, L = this.luma, d = this.img.data, now = performance.now();
+    const [prev, next] = Video.neighbours(this.stamp, H, now, FRESH_MS, MAX_GAP);
     const useColor = this.color && this.nseg > 0 && this.cstamp;
     let cprev, cnext;
-    if (useColor) [cprev, cnext] = Video.neighbours(this.cstamp, H, now, CHROMA_FRESH, CHROMA_GAP);
+    if (useColor) [cprev, cnext] = Video.neighbours(this.cstamp, H, now, CHROMA_FRESH_MS, CHROMA_GAP);
     const nseg = this.nseg, sat = this.saturation / 149;
     const bu = this.autoBalance ? this.meanU : 0, bv = this.autoBalance ? this.meanV : 0;
     const hc = Math.cos(this.hue * Math.PI / 180), hs = Math.sin(this.hue * Math.PI / 180);

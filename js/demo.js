@@ -121,7 +121,6 @@ export class DemoLink extends EventTarget {
       this.pattern = frame;
       if (f1 || !v.gate) {
         for (let ln = 23; ln <= 310; ln++) {
-          if (v.gate && ((ln ^ frame) & 1)) continue;
           const l = f1 ? ln : ln + 313;
           lines.push([l, 8 | (f1 ? 0 : 2), v.field & 255]);
         }

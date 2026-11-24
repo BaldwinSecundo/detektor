@@ -20,7 +20,7 @@ const store = {
 const cfg = {
   range: store.get("range", "fpv"),
   gain: store.get("gain", 40),          // sweep and track
-  vidPx: store.get("vidPx", 128),
+  vidPx: store.get("vidPx2", 112),
   vidGate: store.get("vidGate", true),
   vidColor: store.get("vidColor", false),
   vidAutoGain: store.get("vidAutoGain", true),
@@ -322,7 +322,7 @@ for (const b of document.querySelectorAll("[data-vg]")) b.onclick = () => {
 $("vidAutoGain").checked = cfg.vidAutoGain;
 $("vidAutoGain").onchange = () => { cfg.vidAutoGain = $("vidAutoGain").checked; store.set("vidAutoGain", cfg.vidAutoGain); };
 $("vidPx").value = String(cfg.vidPx);
-$("vidPx").onchange = () => { cfg.vidPx = +$("vidPx").value; store.set("vidPx", cfg.vidPx); if (vidMhz && view === "video") startVideo(vidMhz); };
+$("vidPx").onchange = () => { cfg.vidPx = +$("vidPx").value; store.set("vidPx2", cfg.vidPx); if (vidMhz && view === "video") startVideo(vidMhz); };
 $("vidGate").checked = cfg.vidGate;
 $("vidGate").onchange = () => { cfg.vidGate = video.gate = $("vidGate").checked; store.set("vidGate", cfg.vidGate); if (vidMhz && view === "video") startVideo(vidMhz); };
 $("vidColor").checked = cfg.vidColor;
