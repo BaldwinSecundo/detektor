@@ -58,11 +58,11 @@ export class DemoLink extends EventTarget {
       const m = /^([RABEFL])([1-8])$/i.exec(a[0]);
       if (m) mhz = BANDS[m[1].toUpperCase()][+m[2] - 1];
       const gain = +(a[1] ?? 30), px = +(a[2] ?? 128);
-      this.vid = { mhz, gain, px, gate: a[5] !== "0", t0: performance.now(), seq: 0, frame: 0 };
+      this.vid = { mhz, gain, px, gate: a[5] !== "0", color: a[6] === "1", t0: performance.now(), seq: 0 };
       const peak = Math.round(Math.min(514, 38 * Math.pow(10, (gain - 30) * 0.8 / 20)));
       this.mode = "video";
       this.say(`video on ${mhz} MHz (LO ${mhz - 2}), gain ${gain}, px ${px}, 900 kB/s, window lsb 3 (peak ${peak}), DC 0/0 -> 0/0 in 0 steps\n`);
-      this.timer = setInterval(() => this.videoTick(), 20);
+      this.timer = setInterval(() => this.videoTick(), 17);
       return;
     }
     this.say(`unknown command '${cmd}' (demo)\n`);
@@ -112,29 +112,46 @@ export class DemoLink extends EventTarget {
   videoTick() {
     const v = this.vid, el = (performance.now() - v.t0) / 1000, onDrone = Math.abs(v.mhz - 5806) <= 4;
     const locked = onDrone && el > 0.6, state = locked ? (el > 1 ? 3 : 1) : 0;
-    const lines = [];
+    const lines = [], colour = [];
     if (locked) {
-      // half a field per 20 ms tick: even lines of field 1 (gate) or all lines of both fields
-      v.frame++;
-      const half = v.frame & 1, f = Math.floor(v.frame / 2);
-      for (let ln = 23 + (half ? 144 : 0); ln < 23 + (half ? 288 : 144); ln++) {
-        if (v.gate && (ln & 1)) continue;
-        lines.push([ln, 8 | (ln % 2 ? 0 : 0)]);
-        if (!v.gate) lines.push([ln + 313, 8 | 2]);
+      // NTSC-like timing at 50 ticks/s: one field per tick. Field 1 only with "fields" (even lines one frame,
+      // odd lines the next), else both fields.
+      v.field = (v.field ?? 0) + 1;
+      const f1 = (v.field & 1) === 0, frame = v.field >> 1;
+      this.pattern = frame;
+      if (f1 || !v.gate) {
+        for (let ln = 23; ln <= 310; ln++) {
+          if (v.gate && ((ln ^ frame) & 1)) continue;
+          const l = f1 ? ln : ln + 313;
+          lines.push([l, 8 | (f1 ? 0 : 2), v.field & 255]);
+        }
       }
-      this.pattern = f;
+      for (let ln = 23; ln <= 310; ln += 8) colour.push(f1 ? ln : ln + 313);
     }
     const px = v.px, rec = 8 + px, per = Math.floor((1100 - 16) / rec);
     for (let i = 0; i < Math.max(1, lines.length); i += per) {
       const chunk = lines.slice(i, i + per), p = new Uint8Array(16 + chunk.length * rec), dv = new DataView(p.buffer);
       dv.setUint16(0, v.seq++ & 0xFFFF, true); p[2] = chunk.length; p[3] = state; dv.setUint16(4, px, true); dv.setUint16(6, v.mhz, true);
       dv.setInt16(8, -2800, true); dv.setInt16(10, -1500, true);
-      chunk.forEach(([ln, flags], k) => {
+      chunk.forEach(([ln, flags, fc], k) => {
         const o = 16 + k * rec, row = ln > 312 ? ln - 336 : ln - 23;
-        p[o] = ln & 255; p[o + 1] = ln >> 8; p[o + 2] = flags;
+        p[o] = ln & 255; p[o + 1] = ln >> 8; p[o + 2] = flags; p[o + 3] = fc;
         for (let x = 0; x < px; x++) p[o + 8 + x] = this.pixel(x / px, row / 288, this.pattern);
       });
       this.emit("V", p);
+    }
+    if (v.color && colour.length) {
+      const nseg = 32, rec = 10 + 2 * nseg, p = new Uint8Array(4 + colour.length * rec);
+      p[2] = colour.length; p[3] = nseg;
+      colour.forEach((ln, k) => {
+        const o = 4 + k * rec, row = (ln > 312 ? ln - 336 : ln - 23) / 288, sky = row < 0.45 + 0.05 * Math.sin(this.pattern / 20);
+        p[o] = ln & 255; p[o + 1] = ln >> 8; p[o + 2] = 8 | (ln > 312 ? 16 : 0); p[o + 3] = 20;
+        for (let j = 0; j < nseg; j++) {
+          p[o + 10 + 2 * j] = sky ? 30 : (-25 & 255);        // U: blue sky / green ground
+          p[o + 11 + 2 * j] = sky ? (-15 & 255) : (-30 & 255);
+        }
+      });
+      this.emit("U", p);
     }
   }
   pixel(x, y, f) {

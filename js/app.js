@@ -22,6 +22,7 @@ const cfg = {
   gain: store.get("gain", 40),          // sweep and track
   vidPx: store.get("vidPx", 128),
   vidGate: store.get("vidGate", true),
+  vidColor: store.get("vidColor", false),
   vidAutoGain: store.get("vidAutoGain", true),
   vidGains: store.get("vidGains", {}),  // last good video gain per 5 MHz
 };
@@ -36,6 +37,7 @@ const det = new Detector();
 const video = new Video($("vid"));
 const hunt = new Hunt($("huntPlot"));
 video.gate = cfg.vidGate;
+video.color = cfg.vidColor;
 
 let view = "wf";
 let cursor = null;          // MHz picked on the waterfall
@@ -75,6 +77,7 @@ link.addEventListener("frame", e => {
   const { type, payload } = e.detail;
   if (type === "W") onWaterfall(payload);
   else if (type === "V") video.onFrame(payload);
+  else if (type === "U") video.onColor(payload);
   else if (type === "R") onTrack(payload);
   else if (type === "T") onText(new TextDecoder().decode(payload));
 });
@@ -217,7 +220,7 @@ function onText(t) {
 }
 function overlay(t) { $("vidOverlay").textContent = t; $("vidOverlay").hidden = !t; }
 function videoCmd(mhz, gain) {
-  return `video ${mhz} ${gain} ${cfg.vidPx} 900 auto ${cfg.vidGate ? 1 : 0}`;
+  return `video ${mhz} ${gain} ${cfg.vidPx} 900 auto ${cfg.vidGate ? 1 : 0} ${cfg.vidColor ? 1 : 0}`;
 }
 function waitVideoOn(ms) {
   return new Promise(res => {
@@ -317,6 +320,11 @@ $("vidPx").value = String(cfg.vidPx);
 $("vidPx").onchange = () => { cfg.vidPx = +$("vidPx").value; store.set("vidPx", cfg.vidPx); if (vidMhz && view === "video") startVideo(vidMhz); };
 $("vidGate").checked = cfg.vidGate;
 $("vidGate").onchange = () => { cfg.vidGate = video.gate = $("vidGate").checked; store.set("vidGate", cfg.vidGate); if (vidMhz && view === "video") startVideo(vidMhz); };
+$("vidColor").checked = cfg.vidColor;
+$("vidColor").onchange = () => { cfg.vidColor = video.color = $("vidColor").checked; store.set("vidColor", cfg.vidColor); if (vidMhz && view === "video") startVideo(vidMhz); };
+$("vidSat").value = String(store.get("vidSat", 1));
+video.saturation = +$("vidSat").value;
+$("vidSat").oninput = () => { video.saturation = +$("vidSat").value; store.set("vidSat", video.saturation); video.dirty = true; };
 $("btnBack").onclick = () => { setAuto(false); autoRun++; showView("wf"); };
 $("btnSnap").onclick = () => video.snapshot(`fpv-${vidMhz}MHz-${stamp()}`);
 let stopRec = null;
@@ -341,8 +349,12 @@ function setAuto(on) {
   else if ($("notice").textContent.startsWith("AUTO")) notice("");
 }
 $("btnAuto").onclick = () => setAuto(!auto.on);
+const AUTO_TEXT = { scan: () => "AUTO: szukam sygnału analogowego…", probe: () => `AUTO: sprawdzam ${auto.cand} MHz…`,
+  watch: () => `AUTO: obraz na ${vidMhz} MHz.` };
 function autoTick() {
-  if (!auto.on || !link.connected) return;
+  if (!auto.on) return;
+  notice(AUTO_TEXT[auto.phase]());
+  if (!link.connected) return;
   const now = performance.now();
   if (auto.phase === "scan") {
     if (now - auto.t < 3000) return;
@@ -359,7 +371,6 @@ function autoTick() {
     else if (now - auto.t > 12000) {
       auto.cool.set(bucket(auto.cand), now + 60000);
       auto.phase = "scan"; auto.t = now; autoRun++;
-      notice("AUTO: brak obrazu, szukam dalej…");
       showView("wf");
     }
   } else if (auto.phase === "watch") {
@@ -367,7 +378,6 @@ function autoTick() {
     else if (!auto.lostAt) auto.lostAt = now;
     else if (now - auto.lostAt > 5000) {
       auto.phase = "scan"; auto.t = now; autoRun++;
-      notice("AUTO: sygnał zniknął, szukam dalej…");
       showView("wf");
     }
   }
@@ -397,8 +407,9 @@ setInterval(() => {
     const s = video.stats, live = video.live();
     const lock = !live ? "brak danych" : video.frameLocked() ? "obraz zsynchronizowany" : video.locked() ? "linie, szukam ramki" : "brak synchronizacji";
     $("vidHud").textContent = vidMhz ? `${vidMhz} MHz ${channelName(vidMhz)}  gain ${vidGain}  ${video.ntsc ? "NTSC" : "PAL"}\n${lock}\n` +
-      `${(s.lines / dt).toFixed(0)} linii/s  ${(s.bytes / 1024 / dt).toFixed(0)} kB/s  zgubione ${s.lost}  pominięte ${Math.round(s.gap / 40e6 / dt * 100)}%` : "";
-    s.lines = 0; s.bytes = 0; s.gap = 0;
+      `${(s.lines / dt).toFixed(0)} linii/s  ${(s.bytes / 1024 / dt).toFixed(0)} kB/s  zgubione ${s.lost}  pominięte ${Math.round(s.gap / 40e6 / dt * 100)}%` +
+      (video.color ? `\nkolor ${(s.clines / dt).toFixed(0)} linii/s` : "") : "";
+    s.lines = 0; s.bytes = 0; s.gap = 0; s.clines = 0;
   }
 }, 500);
 
