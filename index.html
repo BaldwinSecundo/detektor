@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Detektor 5,8 GHz</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="bar">
+  <button id="btnConnect" class="primary">Połącz</button>
+  <span id="connDot" class="dot" title="stan połączenia"></span>
+  <span id="connText" class="stat grow"></span>
+  <nav class="tabs" role="tablist">
+    <button data-view="wf" class="on" role="tab">Waterfall</button>
+    <button data-view="hunt" role="tab">Polowanie</button>
+    <button data-view="video" role="tab">Wideo</button>
+  </nav>
+  <button id="btnAuto" class="toggle" title="Sam szuka sygnału analogowego i pokazuje obraz">AUTO</button>
+  <button id="btnMenu" aria-label="Menu">☰</button>
+</header>
+
+<div id="notice" class="notice" hidden></div>
+
+<main>
+  <!-- WATERFALL -->
+  <section id="view-wf" class="view on">
+    <div class="tools">
+      <select id="range" aria-label="Zakres">
+        <option value="fpv">5600–5950 MHz (FPV)</option>
+        <option value="full">5100–5950 MHz (całość)</option>
+        <option value="low">5300–5700 MHz (Lowband)</option>
+        <option value="zoom">Zoom ±20 MHz wokół kursora</option>
+      </select>
+      <div class="stepper" aria-label="Wzmocnienie">
+        <span>Gain</span><button data-gain="-5">−</button><output id="gainOut">40</output><button data-gain="5">+</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="usePeak">szczyty</label>
+      <button id="btnClearPeak">Wyczyść</button>
+      <span id="wfStat" class="stat"></span>
+    </div>
+    <canvas id="spec" class="spec"></canvas>
+    <canvas id="wf" class="wf"></canvas>
+    <div id="cursorBar" class="cursorbar" hidden>
+      <span id="curInfo"></span>
+      <button id="btnCurVideo" class="primary">Wideo</button>
+      <button id="btnCurHunt">Polowanie</button>
+      <button id="btnCurZoom">Zoom</button>
+    </div>
+    <div id="cands" class="cands"></div>
+  </section>
+
+  <!-- HUNT -->
+  <section id="view-hunt" class="view">
+    <div class="hunt-top">
+      <div class="hunt-freq">
+        <button data-hf="-5">−5</button><button data-hf="-1">−1</button>
+        <output id="huntFreq">— MHz</output>
+        <button data-hf="1">+1</button><button data-hf="5">+5</button>
+      </div>
+      <div id="huntDb" class="big">—</div>
+      <div id="huntSub" class="sub">dB nad szumem</div>
+    </div>
+    <canvas id="huntPlot" class="huntplot"></canvas>
+    <div class="tools">
+      <div class="stepper"><span>Gain</span><button data-gain="-5">−</button><output class="gainOut">40</output><button data-gain="5">+</button></div>
+      <button id="btnTone">Dźwięk: wył.</button>
+      <button id="btnCompass">Kompas</button>
+      <button id="btnHuntReset">Reset</button>
+      <button id="btnHuntVideo" class="primary">Wideo</button>
+    </div>
+    <p id="huntBest" class="sub"></p>
+  </section>
+
+  <!-- VIDEO -->
+  <section id="view-video" class="view">
+    <div id="screen" class="screen">
+      <canvas id="vid" width="128" height="576"></canvas>
+      <div id="vidOverlay" class="overlay">Wybierz sygnał na waterfallu i naciśnij „Wideo”.</div>
+      <div id="vidHud" class="hud"></div>
+      <div id="recDot" class="recdot" hidden>● REC</div>
+    </div>
+    <div class="tools">
+      <div class="stepper"><span>MHz</span><button data-vf="-1">−1</button><output id="vidFreq">—</output><button data-vf="1">+1</button></div>
+      <div class="stepper"><span>Gain</span><button data-vg="-3">−</button><output id="vidGain">30</output><button data-vg="3">+</button></div>
+      <label class="chk"><input type="checkbox" id="vidAutoGain" checked>auto gain</label>
+      <button id="btnRec">Nagraj</button>
+      <button id="btnSnap">Zdjęcie</button>
+      <button id="btnFull">Pełny ekran</button>
+      <button id="btnBack">Waterfall</button>
+    </div>
+    <details class="more">
+      <summary>Ustawienia obrazu</summary>
+      <div class="tools">
+        <label>Piksele w linii <select id="vidPx"><option>96</option><option selected>128</option><option>160</option><option>192</option></select></label>
+        <label class="chk"><input type="checkbox" id="vidGate" checked>całe półobrazy (płynniej)</label>
+      </div>
+      <p class="sub">Na czas wideo waterfall stoi: płytka ma jedno radio. Każda inna komenda zatrzymuje obraz.</p>
+    </details>
+  </section>
+</main>
+
+<dialog id="menu">
+  <form method="dialog" class="menu-head"><strong>Detektor 5,8 GHz</strong><button>✕</button></form>
+  <p id="linkInfo" class="sub"></p>
+  <div class="tools">
+    <button data-cmd="status">status</button>
+    <button data-cmd="sweep status">sweep status</button>
+    <button data-cmd="help">help</button>
+    <button data-cmd="restart">restart płytki</button>
+    <a class="btn" href="?demo">Tryb demo</a>
+  </div>
+  <form id="cmdForm" class="cmd"><input id="cmdIn" placeholder="komenda, np. gain 50" autocomplete="off"><button>Wyślij</button></form>
+  <pre id="log" class="log"></pre>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
